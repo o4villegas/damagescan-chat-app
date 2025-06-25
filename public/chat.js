@@ -1,17 +1,61 @@
 /**
- * AutoRAG Chat Application Frontend
+ * DamageScan_Chat Frontend Application
  * 
- * Handles UI interactions, theme management, system prompt configuration,
+ * Vanilla JavaScript implementation for browser environment.
+ * Handles UI interactions, system prompt configuration,
  * and communication with the AutoRAG-enhanced backend API.
  * 
  * Features:
- * - Dark/Light theme switching with persistence
  * - System prompt configuration with presets
  * - Real-time chat with streaming responses
  * - RAG status indicators and metadata display
  * - Error handling and connection management
  * - Mobile-responsive interactions
  */
+
+// =============================================================================
+// Configuration Constants
+// =============================================================================
+
+const CONFIG = {
+  model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+  autoragIndex: "damagescan-rag-1",
+  defaultSystemPrompt: "You are a helpful, friendly assistant. Use the provided context from the knowledge base to enhance your responses when relevant, but you can also draw from your general knowledge. If context is provided, prioritize it but explain clearly when you're using external knowledge vs. the knowledge base. Provide concise and accurate responses.",
+  maxTokens: 1024,
+  temperature: 0.7,
+  ragSettings: {
+    maxResults: 5,
+    scoreThreshold: 0.1,
+    rewriteQuery: true,
+  },
+  streamingEnabled: true,
+  errorRetryAttempts: 3,
+  timeoutMs: 30000,
+};
+
+const ERROR_MESSAGES = {
+  AUTORAG_UNAVAILABLE: "Knowledge base temporarily unavailable. Using general knowledge only.",
+  LLM_FAILURE: "AI model temporarily unavailable. Please try again.",
+  INVALID_REQUEST: "Invalid request format. Please check your input.",
+  RATE_LIMITED: "Too many requests. Please wait a moment before trying again.",
+  TIMEOUT: "Request timed out. Please try again with a shorter message.",
+  NETWORK_ERROR: "Network error occurred. Please check your connection.",
+  UNKNOWN_ERROR: "An unexpected error occurred. Please try again.",
+};
+
+// =============================================================================
+// System Prompt Presets
+// =============================================================================
+
+const systemPromptPresets = {
+  default: "You are a helpful, friendly assistant. Use the provided context from the knowledge base to enhance your responses when relevant, but you can also draw from your general knowledge. If context is provided, prioritize it but explain clearly when you're using external knowledge vs. the knowledge base. Provide concise and accurate responses.",
+  
+  technical: "You are a technical expert assistant. When using the knowledge base, focus on technical details, implementation specifics, and best practices. Provide code examples when relevant, explain technical concepts clearly, and reference specific documentation sections when using knowledge base information. Be precise and thorough in your explanations.",
+  
+  creative: "You are a creative and innovative assistant. Use the knowledge base information as inspiration while encouraging creative thinking and novel approaches. When drawing from the knowledge base, combine the information with creative insights and alternative perspectives. Be engaging and imaginative in your responses.",
+  
+  analytical: "You are an analytical assistant focused on data-driven insights. When using the knowledge base, emphasize facts, statistics, and logical reasoning. Break down complex information into clear analytical points, identify patterns and relationships, and provide structured, evidence-based responses."
+};
 
 // =============================================================================
 // DOM Element References
@@ -21,7 +65,6 @@ const chatMessages = document.getElementById("chat-messages");
 const userInput = document.getElementById("user-input");
 const sendButton = document.getElementById("send-button");
 const typingIndicator = document.getElementById("typing-indicator");
-const themeToggle = document.getElementById("theme-toggle");
 const systemPromptToggle = document.getElementById("system-prompt-toggle");
 const systemPromptSection = document.getElementById("system-prompt-section");
 const systemPromptInput = document.getElementById("system-prompt");
@@ -45,45 +88,21 @@ let chatHistory = [
 ];
 
 let isProcessing = false;
-let currentTheme = localStorage.getItem("theme") || "light";
 let messageIdCounter = 0;
 let retryAttempts = 0;
 const maxRetryAttempts = 3;
-
-// =============================================================================
-// System Prompt Presets
-// =============================================================================
-
-const systemPromptPresets = {
-  default: "You are a helpful, friendly assistant. Use the provided context from the knowledge base to enhance your responses when relevant, but you can also draw from your general knowledge. If context is provided, prioritize it but explain clearly when you're using external knowledge vs. the knowledge base. Provide concise and accurate responses.",
-  
-  technical: "You are a technical expert assistant. When using the knowledge base, focus on technical details, implementation specifics, and best practices. Provide code examples when relevant, explain technical concepts clearly, and reference specific documentation sections when using knowledge base information. Be precise and thorough in your explanations.",
-  
-  creative: "You are a creative and innovative assistant. Use the knowledge base information as inspiration while encouraging creative thinking and novel approaches. When drawing from the knowledge base, combine the information with creative insights and alternative perspectives. Be engaging and imaginative in your responses.",
-  
-  analytical: "You are an analytical assistant focused on data-driven insights. When using the knowledge base, emphasize facts, statistics, and logical reasoning. Break down complex information into clear analytical points, identify patterns and relationships, and provide structured, evidence-based responses."
-};
 
 // =============================================================================
 // Initialization
 // =============================================================================
 
 document.addEventListener('DOMContentLoaded', function() {
-  initializeTheme();
   initializeSystemPrompt();
   initializeEventListeners();
   initializeUIState();
   
-  console.log("AutoRAG Chat App initialized successfully");
+  console.log("DamageScan_Chat initialized successfully");
 });
-
-/**
- * Initialize theme system
- */
-function initializeTheme() {
-  document.documentElement.setAttribute("data-theme", currentTheme);
-  updateThemeToggleText();
-}
 
 /**
  * Initialize system prompt functionality
@@ -92,17 +111,20 @@ function initializeSystemPrompt() {
   const savedSystemPrompt = localStorage.getItem("systemPrompt");
   if (savedSystemPrompt) {
     systemPromptInput.value = savedSystemPrompt;
+  } else {
+    systemPromptInput.value = CONFIG.defaultSystemPrompt;
   }
   updateCharacterCount();
 }
+
+// =============================================================================
+// Message Management
+// =============================================================================
 
 /**
  * Initialize all event listeners
  */
 function initializeEventListeners() {
-  // Theme toggle
-  themeToggle.addEventListener("click", toggleTheme);
-  
   // System prompt toggle
   systemPromptToggle.addEventListener("click", toggleSystemPromptSection);
   
@@ -133,35 +155,6 @@ function initializeEventListeners() {
 function initializeUIState() {
   userInput.focus();
   scrollToBottom();
-}
-
-// =============================================================================
-// Theme Management
-// =============================================================================
-
-/**
- * Toggle between light and dark themes
- */
-function toggleTheme() {
-  currentTheme = currentTheme === "light" ? "dark" : "light";
-  document.documentElement.setAttribute("data-theme", currentTheme);
-  localStorage.setItem("theme", currentTheme);
-  updateThemeToggleText();
-  
-  // Add visual feedback
-  themeToggle.style.transform = "scale(0.95)";
-  setTimeout(() => {
-    themeToggle.style.transform = "";
-  }, 150);
-}
-
-/**
- * Update theme toggle button text
- */
-function updateThemeToggleText() {
-  const icon = currentTheme === "light" ? "🌙" : "☀️";
-  const text = currentTheme === "light" ? "Dark Mode" : "Light Mode";
-  themeToggle.innerHTML = `<span>${icon}</span><span>${text}</span>`;
 }
 
 // =============================================================================
@@ -263,8 +256,68 @@ function handleUserInputKeydown(event) {
 }
 
 // =============================================================================
-// Message Management
+// Input Validation Functions
 // =============================================================================
+
+/**
+ * Validate chat request structure
+ */
+function isChatRequest(obj) {
+  return (
+    obj &&
+    typeof obj === "object" &&
+    Array.isArray(obj.messages) &&
+    obj.messages.every((msg) => 
+      msg &&
+      typeof msg.role === "string" &&
+      ["system", "user", "assistant"].includes(msg.role) &&
+      typeof msg.content === "string"
+    )
+  );
+}
+
+/**
+ * Validate chat request structure and content
+ */
+function validateChatRequest(body) {
+  const errors = [];
+  const warnings = [];
+
+  if (!isChatRequest(body)) {
+    errors.push("Invalid request structure");
+    return { valid: false, errors, warnings };
+  }
+
+  // Validate messages
+  if (body.messages.length === 0) {
+    errors.push("At least one message is required");
+  }
+
+  // Check for user message
+  const hasUserMessage = body.messages.some(msg => msg.role === "user");
+  if (!hasUserMessage) {
+    errors.push("At least one user message is required");
+  }
+
+  // Validate system prompt length
+  if (body.systemPrompt && body.systemPrompt.length > 10000) {
+    errors.push("System prompt too long (max 10000 characters)");
+  }
+
+  // Validate message content length
+  for (const msg of body.messages) {
+    if (msg.content.length > 50000) {
+      errors.push(`Message content too long (max 50000 characters)`);
+    }
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+    warnings,
+    sanitizedInput: errors.length === 0 ? body : undefined,
+  };
+}
 
 /**
  * Send a message to the chat API and process the response
@@ -336,9 +389,8 @@ async function sendChatRequest() {
     messages: chatHistory,
     systemPrompt: customSystemPrompt || undefined,
     ragSettings: {
-      maxResults: 5,
-      scoreThreshold: 0.1,
-      rewriteQuery: true
+      ...CONFIG.ragSettings,
+      index: CONFIG.autoragIndex,
     }
   };
 
@@ -593,21 +645,21 @@ function addMessageToChat(role, content, options = {}) {
 async function handleChatError(error, messageId) {
   console.error(`Chat error (attempt ${retryAttempts + 1}):`, error);
   
-  let errorMessage = "I apologize, but I encountered an error processing your request.";
+  let errorMessage = ERROR_MESSAGES.UNKNOWN_ERROR;
   let shouldRetry = false;
   
   // Determine error type and appropriate response
   if (error.message.includes("HTTP 503") || error.message.includes("HTTP 502")) {
-    errorMessage = "The AI service is temporarily unavailable. Please try again in a moment.";
+    errorMessage = ERROR_MESSAGES.LLM_FAILURE;
     shouldRetry = true;
   } else if (error.message.includes("HTTP 429")) {
-    errorMessage = "Too many requests. Please wait a moment before trying again.";
+    errorMessage = ERROR_MESSAGES.RATE_LIMITED;
     shouldRetry = true;
   } else if (error.message.includes("NetworkError") || error.message.includes("Failed to fetch")) {
-    errorMessage = "Network connection issue. Please check your connection and try again.";
+    errorMessage = ERROR_MESSAGES.NETWORK_ERROR;
     shouldRetry = true;
   } else if (error.message.includes("timeout")) {
-    errorMessage = "Request timed out. Please try again with a shorter message.";
+    errorMessage = ERROR_MESSAGES.TIMEOUT;
     shouldRetry = false;
   }
   
@@ -768,9 +820,11 @@ setInterval(() => {
   const messages = chatMessages.querySelectorAll('.message');
   if (messages.length > 100) {
     console.log("Cleaning up old messages for performance...");
-    for (let i = 0; i < 20; i++) {
-      if (messages[i] && !messages[i].classList.contains('assistant-message')) {
-        messages[i].remove();
+    // Remove older user messages to free up memory
+    const userMessages = chatMessages.querySelectorAll('.user-message');
+    for (let i = 0; i < Math.min(20, userMessages.length - 10); i++) {
+      if (userMessages[i]) {
+        userMessages[i].remove();
       }
     }
   }
@@ -783,11 +837,11 @@ setInterval(() => {
 if (typeof window !== 'undefined') {
   window.chatDebug = {
     chatHistory,
-    currentTheme,
     isProcessing,
     retryAttempts,
     sendMessage,
-    toggleTheme,
+    systemPromptPresets,
+    CONFIG,
     clearChat: () => {
       chatHistory.length = 1; // Keep initial message
       chatMessages.innerHTML = chatMessages.querySelector('.message').outerHTML;
@@ -795,4 +849,4 @@ if (typeof window !== 'undefined') {
   };
 }
 
-console.log("AutoRAG Chat JavaScript loaded successfully");
+console.log("DamageScan_Chat JavaScript loaded successfully");
